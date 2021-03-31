@@ -19,6 +19,10 @@ func init() {
 	DB.Restore(&proposer, &acceptor, sm.GetKVStatMachineInstance())
 }
 
+// [key = index, set key value ]
+// [key = index, delete key ]
+// [key = index, nop ]
+
 type LevelDB struct {
 	db  *leveldb.DB
 	opt *opt.Options
