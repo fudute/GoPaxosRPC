@@ -87,6 +87,12 @@ if [[ $? -ne 0 ]]; then
     exit 255
 fi
 
+echo "clear Paxos Volumes"
+#docker volume ls |grep "${paxos_volume_prefix}"|awk '{print $2}'|xargs -i docker volume rm {}
+rm -rf ${HOME}/paxos_volume_data
+mkdir -p ${HOME}/paxos_volume_data
+paxos_volume_prefix="paxos_volume"
+
 echo "Building Paxos Cluster Network"
 docker network create "$network"
 
@@ -100,7 +106,9 @@ comma_separated_peer_id_list=$(
 )
 
 for peer_index in "${!peers[@]}"; do
-    docker run -p "${peers[$peer_index]}":8080 --net $network -e "PEERS="$comma_separated_peer_id_list"" -e "NETWORK="$network"" --name="peer-$peer_index" -d paxos
+    volume_path="${HOME}/paxos_volume_data/${paxos_volume_prefix}_${peer_index}" ;
+    mkdir -p ${volume_path}
+    docker run -p "${peers[$peer_index]}":8080 --net $network --privileged=true -v ${volume_path}":/home/log" -e "PEERS="$comma_separated_peer_id_list"" -e "ME"=$peer_index"" -e "NETWORK="$network"" --name="peer-$peer_index" -d paxos
 done
 
 # Docker list peers on success

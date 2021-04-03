@@ -33,6 +33,7 @@ func Router() *gin.Engine {
 	router.GET("/", Index)
 	router.GET("/store/get/:key", GetValue)
 	router.POST("/store/set/", SetValue)
+	router.GET("/log/print/:path", PrintLog)
 	// router.POST("learn/:index", Learn)
 	return router
 }

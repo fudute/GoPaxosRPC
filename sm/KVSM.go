@@ -43,7 +43,9 @@ func (kvSM *kvStatMachine) Execute(command string) (string, error) {
 		}
 		delete(kvSM.m, tokens[1])
 		return "", nil
-	} else {
-		return "", errors.New("unkonw command")
+	} else if tokens[0] == "NOP" {
+		return "", nil
 	}
+	return "", errors.New("unkonw command")
+
 }

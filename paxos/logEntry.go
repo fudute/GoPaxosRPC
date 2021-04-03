@@ -6,13 +6,14 @@ const (
 	SET = iota
 	GET
 	DELETE
+	NOP
 )
 
 type LogEntry struct {
 	MinProposal      int
 	AcceptedProposal int
 	AcceptedValue    string
-	isCommited       bool
+	IsCommited       bool
 }
 
 func NewLogEntry(opt int, key, value string) *LogEntry {
@@ -31,5 +32,5 @@ func NewLogEntry(opt int, key, value string) *LogEntry {
 }
 
 func (le *LogEntry) String() string {
-	return strconv.Itoa(le.MinProposal) + ":" + strconv.Itoa(le.AcceptedProposal) + ":" + le.AcceptedValue + ":" + strconv.FormatBool(le.isCommited)
+	return strconv.Itoa(le.MinProposal) + ":" + strconv.Itoa(le.AcceptedProposal) + ":" + le.AcceptedValue + ":" + strconv.FormatBool(le.IsCommited)
 }

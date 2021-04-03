@@ -16,7 +16,7 @@
 FROM ubuntu:18.04
 
 COPY GoPaxos /go/bin/GoPaxos
-
+VOLUME [ "/home/log" ]
 ENTRYPOINT ["/go/bin/GoPaxos"]
 
 EXPOSE 8080

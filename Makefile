@@ -1,7 +1,7 @@
 
 build:
 	@echo "Building Paxos Server"	
-	go build -o paxos/paxos main.go
+	go build -o GoPaxos main.go
 
 test:
 	@echo "Testing GoPaxos"	

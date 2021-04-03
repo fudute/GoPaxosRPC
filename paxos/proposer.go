@@ -14,9 +14,20 @@ type Proposer struct {
 	ServerID int
 	LogIndex int // 记录最小的没有Chosen的logIndex
 	Clients  []*rpc.Client
+	In       chan Request
+	buffSize int
 }
 
-var proposer Proposer
+var proposer = &Proposer{
+	ServerID: GetServerID(),
+}
+
+type Request struct {
+	Oper  int
+	Key   string
+	Value string
+	Done  chan error
+}
 
 type PrepareRequest struct {
 	Index       int
@@ -37,7 +48,27 @@ type AcceptResponse struct {
 	MinProposal int
 }
 
+func init() {
+	proposer.In = make(chan Request, proposer.buffSize)
+	go func() {
+		for {
+			req := <-proposer.In
+			err := StartNewInstance(req.Oper, req.Key, req.Value)
+			if err != nil {
+				log.Println("Instance error", err)
+			}
+			// 这里可以选择往done中传不同的参数表示不同的结果
+			req.Done <- err
+		}
+	}()
+}
+
+func GetProposerInstance() *Proposer {
+	return proposer
+}
+
 func InitNetwork() {
+	// 等待acceptor启动
 	time.Sleep(time.Second * 3)
 	peers := GetPeerList()
 	for _, peer := range peers {
@@ -63,18 +94,20 @@ func StartNewInstance(oper int, key string, value string) error {
 		command = "SET " + key + " " + value
 	} else if oper == DELETE {
 		command = "DELETE " + key
+	} else if oper == NOP {
+		command = "NOP"
 	} else {
 		return ErrorUnkonwCommand
 	}
 
-	log.Println("command :", command)
+	log.Println("StartNewInstance command :", command)
 
 	// 循环获得第一个没有被Chosen的index，直到成功Prepare
 	isCommited := false
 	for !isCommited {
 		var err error
 		le, err := DB.ReadLog(proposer.LogIndex)
-		for err == nil && le.isCommited {
+		for err == nil && le.IsCommited {
 			proposer.LogIndex++
 			le, err = DB.ReadLog(proposer.LogIndex)
 		}
@@ -97,7 +130,7 @@ func StartNewInstance(oper int, key string, value string) error {
 // 如果成功提交当前value，返回true，否则返回false
 func DoPrepare(index int, value string, minProposal int) (bool, error) {
 
-	log.Printf("start prepare at index = %d\n", index)
+	log.Printf("DoPrepare start prepare at index = %d\n", index)
 
 	proposalNum := GenerateProposalNum(minProposal, proposer.ServerID)
 
@@ -106,7 +139,7 @@ func DoPrepare(index int, value string, minProposal int) (bool, error) {
 	preparedPeersCount := 0
 	majorityPeersCount := len(proposer.Clients)/2 + 1
 
-	isCommited := true
+	isMeCommited := true
 
 	for _, client := range proposer.Clients {
 
@@ -125,7 +158,7 @@ func DoPrepare(index int, value string, minProposal int) (bool, error) {
 		if resp.AcceptedValue != "" && resp.AcceptedProposal > curMaxProposal {
 			curMaxProposal = resp.AcceptedProposal
 			curValue = resp.AcceptedValue
-			isCommited = false
+			isMeCommited = false
 		}
 		// Break when majorityPeersCount reached
 		if preparedPeersCount >= majorityPeersCount {
@@ -136,7 +169,7 @@ func DoPrepare(index int, value string, minProposal int) (bool, error) {
 	if preparedPeersCount < majorityPeersCount {
 		return false, errors.New("majority consensus not obtained")
 	}
-	return isCommited, nil
+	return isMeCommited, nil
 }
 
 // DoAccept starts the accept phase sending
@@ -179,13 +212,13 @@ func DoAccept(index, proposalNum int, proposalValue string) error {
 			}
 			if err == ErrorNotFound {
 				le = &LogEntry{
-					isCommited:       true,
+					IsCommited:       true,
 					AcceptedProposal: proposalNum,
 					AcceptedValue:    proposalValue,
 					MinProposal:      proposalNum,
 				}
 			}
-			le.isCommited = true
+			le.IsCommited = true
 			DB.WriteLog(index, le)
 			sm.GetKVStatMachineInstance().Execute(proposalValue)
 			break

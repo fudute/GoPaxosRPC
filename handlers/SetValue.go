@@ -20,8 +20,16 @@ func SetValue(c *gin.Context) {
 	c.Bind(&p)
 	fmt.Println(p)
 	// 这里启动一个新的Instance
-	err := paxos.StartNewInstance(paxos.SET, p.Key, p.Value)
+	req := paxos.Request{
+		Oper:  paxos.SET,
+		Key:   p.Key,
+		Value: p.Value,
+		Done:  make(chan error),
+	}
 
+	paxos.GetProposerInstance().In <- req
+
+	err := <-req.Done
 	if err != nil {
 		c.JSON(http.StatusBadRequest, nil)
 	}

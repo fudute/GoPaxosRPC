@@ -8,11 +8,15 @@ import (
 type Acceptor struct {
 }
 
-var acceptor Acceptor
+var acceptor = &Acceptor{}
 
 func init() {
-	rpc.Register(&acceptor)
+	rpc.Register(acceptor)
 	rpc.HandleHTTP()
+}
+
+func GetAcceptorInstance() *Acceptor {
+	return acceptor
 }
 
 // Prepare return acceptedProposal and acceptedValue

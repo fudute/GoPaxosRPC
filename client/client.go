@@ -78,6 +78,7 @@ func testSet(n int) {
 
 // "set key value"
 func main() {
-	n := 100
+	rand.Seed(time.Now().Unix())
+	n := 1000
 	testSet(n)
 }
