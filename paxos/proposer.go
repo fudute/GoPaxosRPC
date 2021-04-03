@@ -50,9 +50,13 @@ type AcceptResponse struct {
 
 func init() {
 	proposer.In = make(chan Request, proposer.buffSize)
+
 	go func() {
 		for {
 			req := <-proposer.In
+			if req.Oper == NOP {
+				fmt.Println("start nop")
+			}
 			err := StartNewInstance(req.Oper, req.Key, req.Value)
 			if err != nil {
 				log.Println("Instance error", err)
@@ -103,8 +107,8 @@ func StartNewInstance(oper int, key string, value string) error {
 	log.Println("StartNewInstance command :", command)
 
 	// 循环获得第一个没有被Chosen的index，直到成功Prepare
-	isCommited := false
-	for !isCommited {
+	isMeCommited := false
+	for !isMeCommited {
 		var err error
 		le, err := DB.ReadLog(proposer.LogIndex)
 		for err == nil && le.IsCommited {
@@ -116,13 +120,36 @@ func StartNewInstance(oper int, key string, value string) error {
 			log.Fatal("read error", err)
 		}
 
-		isCommited, err = DoPrepare(proposer.LogIndex, command, 0)
+		isMeCommited, err = DoPrepare(proposer.LogIndex, command, 0)
 		if err != nil {
 			return err
 		}
 		proposer.LogIndex++
 	}
 	return nil
+}
+
+func SendRequestAndWaitForReply(req *PrepareRequest, done chan struct{}) chan *PrepareResponse {
+	out := make(chan *PrepareResponse)
+
+	for _, client := range proposer.Clients {
+
+		go func(client *rpc.Client) {
+			resp := &PrepareResponse{}
+			err := client.Call("Acceptor.Prepare", req, resp)
+			if err != nil {
+				log.Println("rpc failed", err)
+				return
+			}
+			select {
+			case out <- resp:
+			case <-done:
+				return
+			}
+		}(client)
+	}
+
+	return out
 }
 
 // DoPrepare可以确定index位置的值
@@ -141,20 +168,17 @@ func DoPrepare(index int, value string, minProposal int) (bool, error) {
 
 	isMeCommited := true
 
-	for _, client := range proposer.Clients {
+	req := &PrepareRequest{
+		Index:       proposer.LogIndex,
+		ProposalNum: proposalNum,
+	}
 
-		req := &PrepareRequest{
-			Index:       proposer.LogIndex,
-			ProposalNum: proposalNum,
-		}
-		resp := &PrepareResponse{}
-		err := client.Call("Acceptor.Prepare", req, resp)
-		if err != nil {
-			log.Println("rpc failed", err)
-			continue
-		}
+	done := make(chan struct{})
+
+	out := SendRequestAndWaitForReply(req, done)
+
+	for resp := range out {
 		preparedPeersCount++
-
 		if resp.AcceptedValue != "" && resp.AcceptedProposal > curMaxProposal {
 			curMaxProposal = resp.AcceptedProposal
 			curValue = resp.AcceptedValue
@@ -162,11 +186,14 @@ func DoPrepare(index int, value string, minProposal int) (bool, error) {
 		}
 		// Break when majorityPeersCount reached
 		if preparedPeersCount >= majorityPeersCount {
+			close(done)
 			DoAccept(index, proposalNum, curValue)
 			break
 		}
 	}
+
 	if preparedPeersCount < majorityPeersCount {
+		close(done)
 		return false, errors.New("majority consensus not obtained")
 	}
 	return isMeCommited, nil

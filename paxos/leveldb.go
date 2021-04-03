@@ -146,6 +146,24 @@ func parseLog(str string) (*LogEntry, error) {
 
 var lock sync.Mutex
 
+func extractCommand(value string) string {
+	var ret string
+	first := -2
+	for i := 0; i < len(value); i++ {
+		if value[i] == ':' {
+			if first == -2 {
+				first = -1
+			} else if first == -1 {
+				first = i
+			} else {
+				ret = value[first+1 : i]
+			}
+		}
+	}
+
+	return ret
+}
+
 func (db *LevelDB) PrintLog(fileName string) {
 	go func() {
 		lock.Lock()
@@ -163,12 +181,20 @@ func (db *LevelDB) PrintLog(fileName string) {
 				log.Printf("parse log failed, key :%v ,value :%v\n", key, value)
 				continue
 			}
+			// TODO
+			// > 1974 17:8:SET ntup xoyhdzdnxe:true
+			// ---
+			// > 1974 17:10:SET ntup xoyhdzdnxe:true
+			command := extractCommand(string(value))
+
 			if le.IsCommited {
-				_, err := file.WriteString(string(key) + " " + string(value) + "\n")
-				if err != nil {
-					log.Fatal("cant write commited log to file\n")
+				if command[:3] != "NOP" {
+					_, err := file.WriteString(string(key) + " " + command + "\n")
+					if err != nil {
+						log.Fatal("cant write commited log to file\n")
+					}
+					committed_log_cnt++
 				}
-				committed_log_cnt++
 			}
 		}
 		fmt.Printf("print all logs(total: %v) to ~/paxos_volume_data/paxos_volume_n/%v"+
